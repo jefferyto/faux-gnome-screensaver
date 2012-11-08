@@ -89,8 +89,8 @@ Available under GNU General Public License version 3
 
 
 [project issue tracker]: https://github.com/jefferyto/faux-gnome-screensaver/issues
-[zip]: https://github.com/jefferyto/faux-gnome-screensaver/zipball/master
-[tar.gz]: https://github.com/jefferyto/faux-gnome-screensaver/tarball/master
+[zip]: https://github.com/jefferyto/faux-gnome-screensaver/archive/master.zip
+[tar.gz]: https://github.com/jefferyto/faux-gnome-screensaver/archive/master.tar.gz
 [XScreenSaver]: http://www.jwz.org/xscreensaver/
 [Caffeine]: https://launchpad.net/caffeine
 [bug 528094]: https://bugs.launchpad.net/indicator-session/+bug/528094/comments/31
