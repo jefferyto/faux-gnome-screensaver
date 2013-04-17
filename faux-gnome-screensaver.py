@@ -48,12 +48,14 @@ class XScreenSaverManager(GObject.GObject):
 	XSS_COMMAND = 'xscreensaver-command'
 	XSS_OPTIONS = '~/.xscreensaver'
 
+	XSET = 'xset'
+
 	DEFAULT_TIMEOUT = 600 # in seconds
 
 	DATETIME_FORMAT = '%a %b %d %H:%M:%S %Y'
 	TIMEOUT_FORMAT = '%H:%M:%S'
 
-	def __init__(self):
+	def __init__(self, no_dpms=False):
 		self._screensaver = None
 		self._active = None
 		self._active_since = None
@@ -65,6 +67,7 @@ class XScreenSaverManager(GObject.GObject):
 		self._options_gfile = None
 		self._options_monitor = None
 		self._options_monitor_id = None
+		self._manage_dpms = not no_dpms
 		self._inhibit_id = None
 
 		super(XScreenSaverManager, self).__init__()
@@ -213,6 +216,21 @@ class XScreenSaverManager(GObject.GObject):
 					self.inhibit()
 				self.emit('timeout-changed', timeout)
 
+	def _set_dpms(self, enable):
+		if self._manage_dpms:
+			cmd = '+dpms' if enable else '-dpms'
+			LOG.debug("Calling %s %s", self.XSET, cmd)
+			try:
+				output = subprocess.check_output([self.XSET, cmd], stderr=subprocess.STDOUT)
+				if output:
+					LOG.error("%s returned with output: %s", self.XSET, output)
+				else:
+					LOG.debug("  exited normally")
+			except subprocess.CalledProcessError as err:
+				LOG.error("%s returned non-zero exit status %d: %s", self.XSET, err.returncode, err.output)
+			except OSError as err:
+				LOG.error("Cannot call %s: %s", self.XSET, err)
+
 	@property
 	def active(self):
 		return self._active
@@ -267,6 +285,7 @@ class XScreenSaverManager(GObject.GObject):
 	def uninhibit(self):
 		LOG.debug("Uninhibiting screensaver")
 		if self._inhibit_id is not None:
+			self._set_dpms(True)
 			GObject.source_remove(self._inhibit_id)
 			self._inhibit_id = None
 
@@ -274,6 +293,7 @@ class XScreenSaverManager(GObject.GObject):
 		if not self._locked:
 			LOG.debug("Inhibiting")
 			self._do_command('deactivate')
+			self._set_dpms(False)
 		else:
 			LOG.debug("Screensaver is locked, skipping inhibit")
 		return True
@@ -544,6 +564,7 @@ def main(argv):
 	parser = optparse.OptionParser(description="faux-gnome-screensaver - a GNOME compatibility layer for XScreenSaver")
 	parser.add_option('--no-daemon', action='store_true', dest='no_daemon', default=False, help="Don't become a daemon (not implemented)")
 	parser.add_option('--debug', action='store_true', dest='debug', default=False, help="Enable debugging code")
+	parser.add_option('--no-dpms', action='store_true', dest='no_dpms', default=False, help="Don't manage DPMS (Energy Star) features")
 
 	options, args = parser.parse_args()
 
@@ -564,7 +585,7 @@ def main(argv):
 		signal.signal(s, quit)
 
 	gset_manager = GSettingsManager()
-	xss_manager = XScreenSaverManager()
+	xss_manager = XScreenSaverManager(options.no_dpms)
 	gs_service = FauxGnomeScreensaverService()
 	gsm_listener = GnomeSessionManagerListener()
 
