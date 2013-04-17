@@ -83,7 +83,7 @@ Based in part on:
 
 ## License ##
 
-Copyright &copy; 2012 Jeffery To <jeffery.to@gmail.com>
+Copyright &copy; 2012-2013 Jeffery To <jeffery.to@gmail.com>
 
 Available under GNU General Public License version 3
 

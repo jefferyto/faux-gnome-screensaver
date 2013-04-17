@@ -3,7 +3,7 @@
 # faux-gnome-screensaver.py
 # This file is part of faux-gnome-screensaver
 #
-# Copyright (C) 2012 Jeffery To <jeffery.to@gmail.com>
+# Copyright (C) 2012-2013 Jeffery To <jeffery.to@gmail.com>
 # https://github.com/jefferyto/faux-gnome-screensaver
 #
 # This program is free software: you can redistribute it and/or modify
