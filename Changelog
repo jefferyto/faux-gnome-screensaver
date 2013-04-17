@@ -1,4 +1,4 @@
-future ():
+v0.2.0 (2013-04-17):
 * Disable DPMS (Energy Star) features when inhibiting screensaver
 * Added --no-dpms command-line argument to prevent DPMS disabling
 

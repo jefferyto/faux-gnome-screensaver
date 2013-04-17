@@ -2,7 +2,7 @@
 
 A GNOME compatibility layer for XScreenSaver  
 <https://github.com/jefferyto/faux-gnome-screensaver>  
-v0.1.0
+v0.2.0
 
 Faux GNOME Screensaver (FGS) adds several features to bridge the gap
 between [XScreenSaver][] and GNOME 3:
