@@ -496,12 +496,17 @@ class GSettingsManager(GObject.GObject):
 		self._saved = {}
 		for key, info in self.SETTINGS.iteritems():
 			schema = info['schema']
-			LOG.debug("Listening to changes to %s.%s", schema, key)
-			self._saved[key] = {
-				'value': None,
-				'handler_id': self._gsettings[schema].connect('changed::' + key, lambda _, k: self._changed(k))
-			}
-			self._changed(key, init=True)
+			gsettings = self._gsettings[schema]
+			keys = gsettings.list_keys()
+			if key in keys:
+				LOG.debug("Listening to changes to %s.%s", schema, key)
+				self._saved[key] = {
+					'value': None,
+					'handler_id': gsettings.connect('changed::' + key, lambda _, k: self._changed(k))
+				}
+				self._changed(key, init=True)
+			else:
+				LOG.debug("%s.%s does not exist, skipping", schema, key)
 
 	def deactivate(self):
 		if self._saved:
