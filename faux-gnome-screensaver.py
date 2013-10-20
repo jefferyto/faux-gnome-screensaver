@@ -463,7 +463,8 @@ class GSettingsManager(GObject.GObject):
 		},
 		'idle-delay': {
 			'schema': SCHEMA_SESSION,
-			'type': 'uint'
+			'type': 'uint',
+			'clamp': 0
 		},
 		'sleep-display-ac': {
 			'schema': SCHEMA_POWER,
@@ -479,7 +480,6 @@ class GSettingsManager(GObject.GObject):
 
 	def __init__(self):
 		self._gsettings = None
-		self._timeout = None
 		self._saved = None
 
 		super(GSettingsManager, self).__init__()
@@ -490,8 +490,6 @@ class GSettingsManager(GObject.GObject):
 			schema = info['schema']
 			if schema not in self._gsettings:
 				self._gsettings[schema] = Gio.Settings(schema)
-
-		self._timeout = self._get_setting('idle-delay')
 
 		self._saved = {}
 		for key, info in self.SETTINGS.iteritems():
@@ -517,7 +515,6 @@ class GSettingsManager(GObject.GObject):
 				self._gsettings[schema].disconnect(info['handler_id'])
 
 		self._gsettings = None
-		self._timeout = None
 		self._saved = None
 
 	def _get_setting(self, key):
@@ -538,7 +535,7 @@ class GSettingsManager(GObject.GObject):
 		if not result:
 			LOG.warning("Unable to set %s.%s to %s", schema, key, value)
 
-		return ret if ret is not None else result # for _changed() / timeout setter
+		return ret if ret is not None else result # for _changed()
 
 	def _changed(self, key, init=False):
 		info = self.SETTINGS[key]
@@ -551,18 +548,9 @@ class GSettingsManager(GObject.GObject):
 
 		self._saved[key]['value'] = value
 
-		clamp = self._timeout if key == 'idle-delay' else info['clamp']
+		clamp = info['clamp']
 		if value != clamp:
 			GObject.idle_add(self._set_setting, key, clamp, False)
-
-	@property
-	def timeout(self):
-		return self._timeout
-
-	@timeout.setter
-	def timeout(self, value):
-		self._timeout = value
-		GObject.idle_add(self._set_setting, 'idle-delay', value, False)
 
 
 def main(argv):
@@ -596,8 +584,7 @@ def main(argv):
 
 	xss_manager_ids = []
 	for s, h in [
-				('active-changed', lambda _, a: gs_service.active_changed(a)),
-				('timeout-changed', lambda _, t: setattr(gset_manager, 'timeout', t))
+				('active-changed', lambda _, a: gs_service.active_changed(a))
 			]:
 		xss_manager_ids.append(xss_manager.connect(s, h))
 
