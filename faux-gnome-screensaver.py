@@ -567,15 +567,15 @@ def main(argv):
 	DBusGMainLoop(set_as_default=True)
 	mainloop = GLib.MainLoop()
 
-	def quit(signum=None, frame=None):
+	def quit(signum=None):
 		if signum is not None:
 			LOG.debug("Received signal %d, leaving main loop", signum)
 		else:
 			LOG.debug("Leaving main loop")
 		mainloop.quit()
 
-	for s in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
-		signal.signal(s, quit)
+	sighup_id = GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGHUP, quit, signal.SIGHUP)
+	sigterm_id = GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, quit, signal.SIGTERM)
 
 	gset_manager = GSettingsManager()
 	xss_manager = XScreenSaverManager(options.no_dpms)
@@ -609,7 +609,13 @@ def main(argv):
 		o.activate()
 
 	LOG.debug("Entering main loop")
-	mainloop.run()
+	try:
+		mainloop.run()
+	except KeyboardInterrupt:
+		LOG.debug("Received signal %d, leaving main loop", signal.SIGINT)
+
+	GLib.source_remove(sighup_id)
+	GLib.source_remove(sigterm_id)
 
 	for o in (gsm_listener, gs_service, xss_manager, gset_manager):
 		o.deactivate()
