@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from gi.repository import GObject, Gio
+from gi.repository import GLib, GObject, Gio
 import ctypes
 import datetime
 import dbus
@@ -40,8 +40,8 @@ LOG_FORMAT = '%(asctime)s %(name)s %(levelname)s: %(message)s'
 
 class XScreenSaverManager(GObject.GObject):
 	__gsignals__ = {
-		'active-changed': (GObject.SIGNAL_RUN_LAST, None, (bool,)),
-		'timeout-changed': (GObject.SIGNAL_RUN_LAST, None, (int,))
+		'active-changed': (GObject.SignalFlags.RUN_LAST, None, (bool,)),
+		'timeout-changed': (GObject.SignalFlags.RUN_LAST, None, (int,))
 	}
 
 	XSS = 'xscreensaver'
@@ -98,7 +98,7 @@ class XScreenSaverManager(GObject.GObject):
 			LOG.error("Cannot start watcher: %s", err)
 			raise
 		self._watcher_read_buf = []
-		self._watcher_id = GObject.io_add_watch(self._watcher.stdout, GObject.IO_IN, self._read_from_watcher)
+		self._watcher_id = GLib.io_add_watch(self._watcher.stdout, GLib.IO_IN, self._read_from_watcher)
 
 		self._timeout = -1
 		self._options_path = os.path.expanduser(self.XSS_OPTIONS)
@@ -111,14 +111,14 @@ class XScreenSaverManager(GObject.GObject):
 
 	def deactivate(self):
 		if self._inhibit_id is not None:
-			GObject.source_remove(self._inhibit_id)
+			GLib.source_remove(self._inhibit_id)
 
 		if self._options_monitor:
 			self._options_monitor.disconnect(self._options_monitor_id)
 			self._options_monitor.cancel()
 
 		if self._watcher_id is not None:
-			GObject.source_remove(self._watcher_id)
+			GLib.source_remove(self._watcher_id)
 
 		if self._watcher:
 			LOG.debug("Ending watcher")
@@ -278,15 +278,15 @@ class XScreenSaverManager(GObject.GObject):
 		interval = max(20, self._timeout - 10)
 		LOG.debug("Inhibiting screensaver every %d seconds", interval)
 		if self._inhibit_id is not None:
-			GObject.source_remove(self._inhibit_id)
+			GLib.source_remove(self._inhibit_id)
 		self._do_inhibit()
-		self._inhibit_id = GObject.timeout_add(interval * 1000, self._do_inhibit)
+		self._inhibit_id = GLib.timeout_add(interval * 1000, self._do_inhibit)
 
 	def uninhibit(self):
 		LOG.debug("Uninhibiting screensaver")
 		if self._inhibit_id is not None:
 			self._set_dpms(True)
-			GObject.source_remove(self._inhibit_id)
+			GLib.source_remove(self._inhibit_id)
 			self._inhibit_id = None
 
 	def _do_inhibit(self):
@@ -375,12 +375,12 @@ class FauxGnomeScreensaverDBusService(dbus.service.Object):
 
 class FauxGnomeScreensaverService(GObject.GObject):
 	__gsignals__ = {
-		'quit': (GObject.SIGNAL_RUN_LAST, None, ()),
-		'lock': (GObject.SIGNAL_RUN_LAST, None, ()),
-		'simulate-user-activity': (GObject.SIGNAL_RUN_LAST, None, ()),
-		'set-active': (GObject.SIGNAL_RUN_LAST, None, (bool,)),
-		'get-active': (GObject.SIGNAL_RUN_LAST, bool, ()),
-		'get-active-time': (GObject.SIGNAL_RUN_LAST, int, ()),
+		'quit': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'lock': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'simulate-user-activity': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'set-active': (GObject.SignalFlags.RUN_LAST, None, (bool,)),
+		'get-active': (GObject.SignalFlags.RUN_LAST, bool, ()),
+		'get-active-time': (GObject.SignalFlags.RUN_LAST, int, ()),
 	}
 
 	def __init__(self):
@@ -403,7 +403,7 @@ class FauxGnomeScreensaverService(GObject.GObject):
 
 class GnomeSessionManagerListener(GObject.GObject):
 	__gsignals__ = {
-		'inhibited-changed': (GObject.SIGNAL_RUN_LAST, None, (bool,))
+		'inhibited-changed': (GObject.SignalFlags.RUN_LAST, None, (bool,))
 	}
 
 	GSM_SERVICE = 'org.gnome.SessionManager'
@@ -550,7 +550,7 @@ class GSettingsManager(GObject.GObject):
 
 		clamp = info['clamp']
 		if value != clamp:
-			GObject.idle_add(self._set_setting, key, clamp, False)
+			GLib.idle_add(self._set_setting, key, clamp, False)
 
 
 def main(argv):
@@ -565,7 +565,7 @@ def main(argv):
 	logging.basicConfig(format=LOG_FORMAT, level=logging_level)
 
 	DBusGMainLoop(set_as_default=True)
-	mainloop = GObject.MainLoop()
+	mainloop = GLib.MainLoop()
 
 	def quit(signum=None, frame=None):
 		if signum is not None:
@@ -634,4 +634,3 @@ if __name__ == '__main__':
 	LOG = logging.getLogger(basename)
 
 	sys.exit(main(argv))
-
