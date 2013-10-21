@@ -493,27 +493,27 @@ class ConsoleKitListener(GObject.GObject):
 
 			LOG.debug("Listening for Lock, Unlock and ActiveChanged from %s", self.CK_SESSION_INTERFACE)
 			# sender path is the session id
-			iface.connect_to_signal('Lock', self._lock, path_keyword='ssid')
-			iface.connect_to_signal('Unlock', self._unlock, path_keyword='ssid')
-			iface.connect_to_signal('ActiveChanged', self._active_changed, path_keyword='ssid')
+			iface.connect_to_signal('Lock', self._lock, path_keyword='path')
+			iface.connect_to_signal('Unlock', self._unlock, path_keyword='path')
+			iface.connect_to_signal('ActiveChanged', self._active_changed, path_keyword='path')
 
 	def deactivate(self):
 		LOG.debug("Disconnecting from %s", self.CK_SESSION_INTERFACE)
 		self._ssid = None
 		self._iface = None
 
-	def _lock(self, ssid=None):
-		if ssid == self._ssid:
+	def _lock(self, path=None):
+		if path == self._ssid:
 			LOG.debug("Received Lock signal from %s", self.CK_SESSION_INTERFACE)
 			self.emit('lock')
 
-	def _unlock(self, ssid=None):
-		if ssid == self._ssid:
+	def _unlock(self, path=None):
+		if path == self._ssid:
 			LOG.debug("Received Unlock signal from %s", self.CK_SESSION_INTERFACE)
 			self.emit('unlock')
 
-	def _active_changed(self, is_active, ssid=None):
-		if ssid == self._ssid:
+	def _active_changed(self, is_active, path=None):
+		if path == self._ssid:
 			LOG.debug("Received ActiveChanged signal from %s, is_active=%s", self.CK_SESSION_INTERFACE, is_active)
 			if is_active:
 				self.emit('is-active')
