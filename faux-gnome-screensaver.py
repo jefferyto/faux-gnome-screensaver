@@ -425,7 +425,7 @@ class GnomeSessionManagerListener(GObject.GObject):
 		self._iface = iface
 		self._check_inhibited()
 
-		LOG.debug("Listening for InhibitorAdded and InhibitorRemoved from %s", self.GSM_INTERFACE)
+		LOG.debug("Listening for signals from %s", self.GSM_INTERFACE)
 		iface.connect_to_signal('InhibitorAdded', self._inhibitor_added)
 		iface.connect_to_signal('InhibitorRemoved', self._inhibitor_removed)
 
@@ -481,13 +481,13 @@ class ConsoleKitListener(GObject.GObject):
 			manager = bus.get_object(self.CK_SERVICE, self.CK_MANAGER_PATH)
 			ssid = manager.GetCurrentSession(dbus_interface=self.CK_MANAGER_INTERFACE)
 		except dbus.exceptions.DBusException as err:
-			LOG.warning("Cannot get current ConsoleKit session id: %s", err)
+			LOG.debug("Cannot get current ConsoleKit session id: %s", err)
 			ssid = None
 
 		if ssid is not None:
 			self._ssid = ssid
 
-			LOG.debug("Listening for Lock, Unlock and ActiveChanged from %s", self.CK_SESSION_INTERFACE)
+			LOG.debug("Listening for signals from %s", self.CK_SESSION_INTERFACE)
 			# sender path is the session id
 			for s, h in [
 						('Lock', self._lock),
@@ -520,6 +520,98 @@ class ConsoleKitListener(GObject.GObject):
 			LOG.debug("Received ActiveChanged signal from %s, is_active=%s", self.CK_SESSION_INTERFACE, is_active)
 			if is_active:
 				self.emit('is-active')
+
+
+class SystemdLogindListener(GObject.GObject):
+	__gsignals__ = {
+		'lock': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'unlock': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'is-active': (GObject.SignalFlags.RUN_LAST, None, ())
+	}
+
+	SYSTEMD_LOGIND_SERVICE = 'org.freedesktop.login1'
+	SYSTEMD_LOGIND_PATH = '/org/freedesktop/login1'
+	SYSTEMD_LOGIND_INTERFACE = 'org.freedesktop.login1.Manager'
+
+	SYSTEMD_LOGIND_SESSION_PATH = '/org/freedesktop/login1/session'
+	SYSTEMD_LOGIND_SESSION_INTERFACE = 'org.freedesktop.login1.Session'
+
+	DBUS_INTERFACE_PROPERTIES = 'org.freedesktop.DBus.Properties'
+
+	def __init__(self):
+		self._ssid = None
+		self._matches = []
+
+		super(SystemdLogindListener, self).__init__()
+
+	def activate(self):
+		LOG.debug("Checking if logind is running")
+		if os.path.exists('/run/systemd/seats/'):
+			bus = dbus.SystemBus()
+
+			LOG.debug("Getting current logind session id")
+			try:
+				manager = bus.get_object(self.SYSTEMD_LOGIND_SERVICE, self.SYSTEMD_LOGIND_PATH)
+				ssid = manager.GetSessionByPID(os.getpid(), dbus_interface=self.SYSTEMD_LOGIND_INTERFACE)
+			except dbus.exceptions.DBusException as err:
+				LOG.debug("Cannot get current logind session id: %s", err)
+				ssid = None
+
+			if ssid is not None:
+				self._ssid = ssid
+
+				LOG.debug("Listening for signals from %s", self.SYSTEMD_LOGIND_SERVICE)
+				# sender path is the session id
+				for s, h, i in [
+							('Lock', self._lock, self.SYSTEMD_LOGIND_SESSION_INTERFACE),
+							('Unlock', self._unlock, self.SYSTEMD_LOGIND_SESSION_INTERFACE),
+							('PropertiesChanged', self._properties_changed, self.DBUS_INTERFACE_PROPERTIES),
+							('PrepareForSleep', self._prepare_for_sleep, self.SYSTEMD_LOGIND_INTERFACE)
+						]:
+					self._matches.append(bus.add_signal_receiver(h, signal_name=s, dbus_interface=i, bus_name=self.SYSTEMD_LOGIND_SERVICE, path_keyword='path'))
+
+		else:
+			LOG.debug("logind is not running")
+
+	def deactivate(self):
+		LOG.debug("Disconnecting from %s", self.SYSTEMD_LOGIND_SERVICE)
+
+		for m in self._matches:
+			m.remove()
+
+		self._ssid = None
+		self._matches = []
+
+	def _lock(self, path=None):
+		if path == self._ssid:
+			LOG.debug("Received Lock signal from %s", self.SYSTEMD_LOGIND_SERVICE)
+			self.emit('lock')
+
+	def _unlock(self, path=None):
+		if path == self._ssid:
+			LOG.debug("Received Unlock signal from %s", self.SYSTEMD_LOGIND_SERVICE)
+			self.emit('unlock')
+
+	def _properties_changed(self, interface_name, changed_properties, invalidated_properties, path=None):
+		if path == self._ssid:
+			LOG.debug("Received PropertiesChanged signal from %s", self.SYSTEMD_LOGIND_SERVICE)
+			LOG.debug("  changed: %s", changed_properties)
+			LOG.debug("  invalidated: %s", invalidated_properties)
+			prop = 'Active'
+			if prop in changed_properties or prop in invalidated_properties:
+				LOG.debug("  Active property for %s was changed, getting new value", path)
+				bus = dbus.SystemBus()
+				proxy = bus.get_object(self.SYSTEMD_LOGIND_SERVICE, path)
+				properties_manager = dbus.Interface(proxy, self.DBUS_INTERFACE_PROPERTIES)
+				is_active = properties_manager.Get(self.SYSTEMD_LOGIND_SESSION_INTERFACE, prop)
+				LOG.debug("  Active property is now %s", is_active)
+				if is_active:
+					self.emit('is-active')
+
+	def _prepare_for_sleep(self, active, path=None):
+		LOG.debug("Received PrepareForSleep signal from %s, active=%s", self.SYSTEMD_LOGIND_SERVICE, active)
+		if active:
+			self.emit('lock')
 
 
 class GSettingsManager(GObject.GObject):
@@ -649,45 +741,67 @@ def main(argv):
 	sighup_id = GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGHUP, quit, signal.SIGHUP)
 	sigterm_id = GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, quit, signal.SIGTERM)
 
-	gset_manager = GSettingsManager()
-	xss_manager = XScreenSaverManager(options.no_dpms)
-	gs_service = FauxGnomeScreensaverService()
-	gsm_listener = GnomeSessionManagerListener()
-	ck_listener = ConsoleKitListener()
-
-	xss_manager_ids = []
-	for s, h in [
-				('active-changed', lambda _, a: gs_service.active_changed(a))
-			]:
-		xss_manager_ids.append(xss_manager.connect(s, h))
-
-	gs_service_ids = []
-	for s, h in [
+	objs = {
+		'gset_manager': {
+			'obj': GSettingsManager(),
+			'signals': []
+		},
+		'xss_manager': {
+			'obj': XScreenSaverManager(options.no_dpms),
+			'signals': [
+				('active-changed', lambda _, a: getobj('gs_service').active_changed(a))
+			]
+		},
+		'gs_service': {
+			'obj': FauxGnomeScreensaverService(),
+			'signals': [
 				('quit', lambda _: quit()),
-				('lock', lambda _: xss_manager.lock()),
-				('simulate-user-activity', lambda _: xss_manager.simulate_user_activity()),
-				('set-active', lambda _, v: setattr(xss_manager, 'active', v)),
-				('get-active', lambda _: xss_manager.active),
-				('get-active-time', lambda _: xss_manager.active_time)
-			]:
-		gs_service_ids.append(gs_service.connect(s, h))
+				('lock', lambda _: getobj('xss_manager').lock()),
+				('simulate-user-activity', lambda _: getobj('xss_manager').simulate_user_activity()),
+				('set-active', lambda _, v: setattr(getobj('xss_manager'), 'active', v)),
+				('get-active', lambda _: getobj('xss_manager').active),
+				('get-active-time', lambda _: getobj('xss_manager').active_time)
+			]
+		},
+		'gsm_listener': {
+			'obj': GnomeSessionManagerListener(),
+			'signals': [
+				('inhibited-changed', lambda _, i: getobj('xss_manager').inhibit() if i else getobj('xss_manager').uninhibit())
+			]
+		},
+		'ck_listener': {
+			'obj': ConsoleKitListener(),
+			'signals': [
+				('lock', lambda _: getobj('xss_manager').lock()),
+				('unlock', lambda _: setattr(getobj('xss_manager'), 'active', False)),
+				('is-active', lambda _: getobj('xss_manager').simulate_user_activity())
+			]
+		},
+		'sl_listener': {
+			'obj': SystemdLogindListener(),
+			'signals': [
+				('lock', lambda _: getobj('xss_manager').lock()),
+				('unlock', lambda _: setattr(getobj('xss_manager'), 'active', False)),
+				('is-active', lambda _: getobj('xss_manager').simulate_user_activity())
+			]
+		}
+	}
 
-	gsm_listener_ids = []
-	for s, h in [
-				('inhibited-changed', lambda _, i: xss_manager.inhibit() if i else xss_manager.uninhibit())
-			]:
-		gsm_listener_ids.append(gsm_listener.connect(s, h))
+	order = ['gset_manager', 'xss_manager', 'gs_service', 'gsm_listener', 'ck_listener', 'sl_listener']
 
-	ck_listener_ids = []
-	for s, h in [
-				('lock', lambda _: xss_manager.lock()),
-				('unlock', lambda _: setattr(xss_manager, 'active', False)),
-				('is-active', lambda _: xss_manager.simulate_user_activity()),
-			]:
-		ck_listener_ids.append(ck_listener.connect(s, h))
+	def getobj(k):
+		return objs[k]['obj']
 
-	for o in (gset_manager, xss_manager, gs_service, gsm_listener, ck_listener):
-		o.activate()
+	for k in order:
+		o = objs[k]
+		obj = o['obj']
+		ids = []
+		for s, h in o['signals']:
+			ids.append(obj.connect(s, h))
+		o['ids'] = ids
+
+	for k in order:
+		getobj(k).activate()
 
 	LOG.debug("Entering main loop")
 	try:
@@ -698,17 +812,14 @@ def main(argv):
 	GLib.source_remove(sighup_id)
 	GLib.source_remove(sigterm_id)
 
-	for o in (ck_listener, gsm_listener, gs_service, xss_manager, gset_manager):
-		o.deactivate()
+	for k in reversed(order):
+		getobj(k).deactivate()
 
-	for h in ck_listener_ids:
-		ck_listener.disconnect(h)
-	for h in gsm_listener_ids:
-		gsm_listener.disconnect(h)
-	for h in gs_service_ids:
-		gs_service.disconnect(h)
-	for h in xss_manager_ids:
-		xss_manager.disconnect(h)
+	for k in reversed(order):
+		o = objs[k]
+		obj = o['obj']
+		for h in o['ids']:
+			obj.disconnect(h)
 
 
 if __name__ == '__main__':
