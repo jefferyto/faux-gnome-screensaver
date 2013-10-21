@@ -469,7 +469,7 @@ class ConsoleKitListener(GObject.GObject):
 
 	def __init__(self):
 		self._ssid = None
-		self._iface = None
+		self._matches = []
 
 		super(ConsoleKitListener, self).__init__()
 
@@ -485,22 +485,25 @@ class ConsoleKitListener(GObject.GObject):
 			ssid = None
 
 		if ssid is not None:
-			proxy = bus.get_object(self.CK_SERVICE, self.CK_SESSION_PATH)
-			iface = dbus.Interface(proxy, dbus_interface=self.CK_SESSION_INTERFACE)
-
 			self._ssid = ssid
-			self._iface = iface
 
 			LOG.debug("Listening for Lock, Unlock and ActiveChanged from %s", self.CK_SESSION_INTERFACE)
 			# sender path is the session id
-			iface.connect_to_signal('Lock', self._lock, path_keyword='path')
-			iface.connect_to_signal('Unlock', self._unlock, path_keyword='path')
-			iface.connect_to_signal('ActiveChanged', self._active_changed, path_keyword='path')
+			for s, h in [
+						('Lock', self._lock),
+						('Unlock', self._unlock),
+						('ActiveChanged', self._active_changed)
+					]:
+				self._matches.append(bus.add_signal_receiver(h, signal_name=s, dbus_interface=self.CK_SESSION_INTERFACE, path_keyword='path'))
 
 	def deactivate(self):
 		LOG.debug("Disconnecting from %s", self.CK_SESSION_INTERFACE)
+
+		for m in self._matches:
+			m.remove()
+
 		self._ssid = None
-		self._iface = None
+		self._matches = []
 
 	def _lock(self, path=None):
 		if path == self._ssid:
