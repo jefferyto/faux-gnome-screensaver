@@ -380,7 +380,7 @@ class FauxGnomeScreensaverService(GObject.GObject):
 		'simulate-user-activity': (GObject.SignalFlags.RUN_LAST, None, ()),
 		'set-active': (GObject.SignalFlags.RUN_LAST, None, (bool,)),
 		'get-active': (GObject.SignalFlags.RUN_LAST, bool, ()),
-		'get-active-time': (GObject.SignalFlags.RUN_LAST, int, ()),
+		'get-active-time': (GObject.SignalFlags.RUN_LAST, int, ())
 	}
 
 	def __init__(self):
@@ -448,6 +448,75 @@ class GnomeSessionManagerListener(GObject.GObject):
 		if inhibited != self._inhibited:
 			self._inhibited = inhibited
 			self.emit('inhibited-changed', inhibited)
+
+
+class ConsoleKitListener(GObject.GObject):
+	__gsignals__ = {
+		'lock': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'unlock': (GObject.SignalFlags.RUN_LAST, None, ()),
+		'is-active': (GObject.SignalFlags.RUN_LAST, None, ())
+	}
+
+	CK_SERVICE = 'org.freedesktop.ConsoleKit'
+	CK_PATH = '/org/freedesktop/ConsoleKit'
+	CK_INTERFACE = 'org.freedesktop.ConsoleKit'
+
+	CK_MANAGER_PATH = CK_PATH + '/Manager'
+	CK_MANAGER_INTERFACE = CK_INTERFACE + '.Manager'
+
+	CK_SESSION_PATH = CK_PATH + '/Session'
+	CK_SESSION_INTERFACE = CK_INTERFACE + '.Session'
+
+	def __init__(self):
+		self._ssid = None
+		self._iface = None
+
+		super(ConsoleKitListener, self).__init__()
+
+	def activate(self):
+		bus = dbus.SystemBus()
+
+		LOG.debug("Getting current ConsoleKit session id")
+		manager = bus.get_object(self.CK_SERVICE, self.CK_MANAGER_PATH)
+		try:
+			ssid = manager.GetCurrentSession(dbus_interface=self.CK_MANAGER_INTERFACE)
+		except dbus.exceptions.DBusException as err:
+			LOG.warning("Cannot get current ConsoleKit session id: %s", err)
+			ssid = None
+
+		if ssid is not None:
+			proxy = bus.get_object(self.CK_SERVICE, self.CK_SESSION_PATH)
+			iface = dbus.Interface(proxy, dbus_interface=self.CK_SESSION_INTERFACE)
+
+			self._ssid = ssid
+			self._iface = iface
+
+			LOG.debug("Listening for Lock, Unlock and ActiveChanged from %s", self.CK_SESSION_INTERFACE)
+			# sender path is the session id
+			iface.connect_to_signal('Lock', self._lock, path_keyword='ssid')
+			iface.connect_to_signal('Unlock', self._unlock, path_keyword='ssid')
+			iface.connect_to_signal('ActiveChanged', self._active_changed, path_keyword='ssid')
+
+	def deactivate(self):
+		LOG.debug("Disconnecting from %s", self.CK_SESSION_INTERFACE)
+		self._ssid = None
+		self._iface = None
+
+	def _lock(self, ssid=None):
+		if ssid == self._ssid:
+			LOG.debug("Received Lock signal from %s", self.CK_SESSION_INTERFACE)
+			self.emit('lock')
+
+	def _unlock(self, ssid=None):
+		if ssid == self._ssid:
+			LOG.debug("Received Unlock signal from %s", self.CK_SESSION_INTERFACE)
+			self.emit('unlock')
+
+	def _active_changed(self, is_active, ssid=None):
+		if ssid == self._ssid:
+			LOG.debug("Received ActiveChanged signal from %s, is_active=%s", self.CK_SESSION_INTERFACE, is_active)
+			if is_active:
+				self.emit('is-active')
 
 
 class GSettingsManager(GObject.GObject):
@@ -581,6 +650,7 @@ def main(argv):
 	xss_manager = XScreenSaverManager(options.no_dpms)
 	gs_service = FauxGnomeScreensaverService()
 	gsm_listener = GnomeSessionManagerListener()
+	ck_listener = ConsoleKitListener()
 
 	xss_manager_ids = []
 	for s, h in [
@@ -605,7 +675,15 @@ def main(argv):
 			]:
 		gsm_listener_ids.append(gsm_listener.connect(s, h))
 
-	for o in (gset_manager, xss_manager, gs_service, gsm_listener):
+	ck_listener_ids = []
+	for s, h in [
+				('lock', lambda _: xss_manager.lock()),
+				('unlock', lambda _: setattr(xss_manager, 'active', False)),
+				('is-active', lambda _: xss_manager.simulate_user_activity()),
+			]:
+		ck_listener_ids.append(ck_listener.connect(s, h))
+
+	for o in (gset_manager, xss_manager, gs_service, gsm_listener, ck_listener):
 		o.activate()
 
 	LOG.debug("Entering main loop")
@@ -617,9 +695,11 @@ def main(argv):
 	GLib.source_remove(sighup_id)
 	GLib.source_remove(sigterm_id)
 
-	for o in (gsm_listener, gs_service, xss_manager, gset_manager):
+	for o in (ck_listener, gsm_listener, gs_service, xss_manager, gset_manager):
 		o.deactivate()
 
+	for h in ck_listener_ids:
+		ck_listener.disconnect(h)
 	for h in gsm_listener_ids:
 		gsm_listener.disconnect(h)
 	for h in gs_service_ids:
