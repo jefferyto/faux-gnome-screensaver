@@ -477,8 +477,8 @@ class ConsoleKitListener(GObject.GObject):
 		bus = dbus.SystemBus()
 
 		LOG.debug("Getting current ConsoleKit session id")
-		manager = bus.get_object(self.CK_SERVICE, self.CK_MANAGER_PATH)
 		try:
+			manager = bus.get_object(self.CK_SERVICE, self.CK_MANAGER_PATH)
 			ssid = manager.GetCurrentSession(dbus_interface=self.CK_MANAGER_INTERFACE)
 		except dbus.exceptions.DBusException as err:
 			LOG.warning("Cannot get current ConsoleKit session id: %s", err)
