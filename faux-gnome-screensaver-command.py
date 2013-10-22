@@ -25,7 +25,7 @@ import optparse
 import os
 import sys
 
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 
 GS_SERVICE = 'org.gnome.ScreenSaver'
 GS_PATH = '/org/gnome/ScreenSaver'

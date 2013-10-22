@@ -2,7 +2,7 @@
 
 A GNOME compatibility layer for XScreenSaver  
 <https://github.com/jefferyto/faux-gnome-screensaver>  
-v0.2.0
+v0.3.0
 
 Faux GNOME Screensaver (FGS) adds several features to bridge the gap
 between [XScreenSaver][] and GNOME 3:
@@ -22,8 +22,13 @@ between [XScreenSaver][] and GNOME 3:
 *   FGS ensures that GNOME is configured to put XScreenSaver in control
     of screensaver activation and display power management.
 
-This has only been tested under Ubuntu 12.10, but feedback (and patches)
-for other distros would also be appreciated.
+*   FGS listens for signals (Lock, Unlock, etc.) from ConsoleKit and
+    systemd-logind, and acts appropriately.
+
+The current version is developed for Ubuntu 13.10; it should work for
+earlier versions of Ubuntu, though no testing has been done. Users of
+Ubuntu 12.10 / 13.04 may want to use [v0.2.0][] instead. Feedback (and
+patches) for other distros would also be appreciated.
 
 All bug reports, feature requests and miscellaneous comments are welcome
 at the [project issue tracker][].
@@ -79,7 +84,9 @@ Open **Screensaver** (`xscreensaver-demo`) to configure XScreenSaver
 Based in part on:
 
 *   The script in a comment for [bug 528094][] by cpaul
-*   The XScreenSaver inhibit code from [Caffeine][]
+*   XScreenSaver inhibit code from [Caffeine][]
+*   ConsoleKit / systemd-logind listening code from
+    [GNOME Screensaver][] and its [Ubuntu branch][]
 
 ## License ##
 
@@ -91,6 +98,9 @@ Available under GNU General Public License version 3
 [project issue tracker]: https://github.com/jefferyto/faux-gnome-screensaver/issues
 [zip]: https://github.com/jefferyto/faux-gnome-screensaver/archive/master.zip
 [tar.gz]: https://github.com/jefferyto/faux-gnome-screensaver/archive/master.tar.gz
+[v0.2.0]: https://github.com/jefferyto/faux-gnome-screensaver/archive/v0.2.0.zip
 [XScreenSaver]: http://www.jwz.org/xscreensaver/
 [Caffeine]: https://launchpad.net/caffeine
 [bug 528094]: https://bugs.launchpad.net/indicator-session/+bug/528094/comments/31
+[GNOME Screensaver]: https://git.gnome.org/browse/gnome-screensaver/
+[Ubuntu branch]: https://launchpad.net/ubuntu/+source/gnome-screensaver
